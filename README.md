@@ -139,8 +139,7 @@ lein shell        # Development REPL
 ```
 
 ## Documentation
-
-- [CLAUDE.md](CLAUDE.md) - Architecture, patterns, and contribution guidelines
+ 
 - [docs/getting-started.md](docs/getting-started.md) - Getting started guide
 - [docs/ververica-cloud.md](docs/ververica-cloud.md) - Ververica Cloud integration
 - [docs/deployment.md](docs/deployment.md) - Deployment guide
