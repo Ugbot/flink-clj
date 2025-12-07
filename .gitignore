@@ -1,0 +1,79 @@
+# Clojure/Leiningen
+target/
+classes/
+checkouts/
+pom.xml
+pom.xml.asc
+*.jar
+*.class
+.lein-*
+.nrepl-port
+.cpcache/
+
+# deps.edn
+.clj-kondo/
+.lsp/
+.calva/
+
+# REPL history
+.lein-repl-history
+.nrepl-history
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+
+# Emacs
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
+log/
+
+# Build artifacts
+out/
+dist/
+release/
+docs/api/
+
+# Flink
+flink-savepoints/
+flink-checkpoints/
+flink-ha/
+
+# Environment
+.env
+.env.local
+.envrc
+
+# Test artifacts
+test-output/
+coverage/
+
+# Local development
+.local/
+scratch/
+tmp/
+
+# AI assistant
+CLAUDE.md

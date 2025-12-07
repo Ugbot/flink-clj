@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+#
+# flink-clj - Clojure CLI for Apache Flink
+#
+# A complete build and project scaffolding CLI for Apache Flink with Clojure.
+#
+# Usage:
+#   flink-clj <command> [options]
+#
+# Commands:
+#   new      Create a new flink-clj project
+#   repl     Start interactive REPL
+#   run      Run a job locally
+#   build    Build an uberjar
+#   deploy   Deploy to a Flink cluster
+#   jobs     List/manage cluster jobs
+#   help     Show help
+#
+# Installation:
+#   curl -sL https://raw.githubusercontent.com/Ugbot/flink-clj/main/install.sh | bash
+#
+# Or manually:
+#   mkdir -p ~/.flink-clj
+#   curl -L -o ~/.flink-clj/flink-clj-cli.jar <release-url>
+#   sudo ln -sf ~/.flink-clj/flink-clj /usr/local/bin/flink-clj
+
+set -e
+
+# Configuration
+FLINK_CLJ_VERSION="${FLINK_CLJ_VERSION:-0.1.0}"
+FLINK_CLJ_HOME="${FLINK_CLJ_HOME:-$HOME/.flink-clj}"
+FLINK_CLJ_JAR="${FLINK_CLJ_HOME}/flink-clj-cli.jar"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Print colored message
+print_message() {
+    local color=$1
+    local message=$2
+    echo -e "${color}${message}${NC}"
+}
+
+# Check Java is available
+check_java() {
+    if ! command -v java &> /dev/null; then
+        print_message $RED "Error: Java is not installed or not in PATH"
+        echo "Please install Java 11 or later:"
+        echo "  macOS:  brew install openjdk@11"
+        echo "  Ubuntu: sudo apt install openjdk-11-jdk"
+        exit 1
+    fi
+
+    # Check Java version
+    local java_version=$(java -version 2>&1 | head -n 1 | cut -d'"' -f2 | cut -d'.' -f1)
+    if [[ "$java_version" -lt 11 ]]; then
+        print_message $YELLOW "Warning: Java 11 or later recommended (found version $java_version)"
+    fi
+}
+
+# Install flink-clj CLI
+install_cli() {
+    echo "Installing flink-clj CLI v${FLINK_CLJ_VERSION}..."
+    echo
+
+    mkdir -p "$FLINK_CLJ_HOME"
+
+    # Check if we can download from releases
+    local release_url="https://github.com/Ugbot/flink-clj/releases/download/v${FLINK_CLJ_VERSION}/flink-clj-cli.jar"
+
+    echo "Downloading CLI JAR..."
+    if command -v curl &> /dev/null; then
+        curl -L -o "${FLINK_CLJ_JAR}" "$release_url" 2>/dev/null || {
+            print_message $YELLOW "Note: Could not download from releases."
+            echo "Building CLI JAR locally..."
+            build_cli_jar
+        }
+    elif command -v wget &> /dev/null; then
+        wget -O "${FLINK_CLJ_JAR}" "$release_url" 2>/dev/null || {
+            print_message $YELLOW "Note: Could not download from releases."
+            echo "Building CLI JAR locally..."
+            build_cli_jar
+        }
+    else
+        print_message $RED "Error: curl or wget required"
+        exit 1
+    fi
+
+    if [[ -f "$FLINK_CLJ_JAR" ]]; then
+        print_message $GREEN "Installation complete!"
+        echo
+        echo "Get started:"
+        echo "  flink-clj new my-pipeline --template etl"
+        echo "  cd my-pipeline"
+        echo "  flink-clj repl"
+    fi
+}
+
+# Build CLI JAR from source (if in flink-clj repo)
+build_cli_jar() {
+    if [[ -f "project.clj" ]] && grep -q "flink-clj" project.clj 2>/dev/null; then
+        echo "Building CLI JAR from source..."
+        if command -v lein &> /dev/null; then
+            lein with-profile +flink-1.20,+uberjar uberjar
+            local built_jar=$(ls -t target/*-standalone.jar 2>/dev/null | head -1)
+            if [[ -f "$built_jar" ]]; then
+                cp "$built_jar" "$FLINK_CLJ_JAR"
+                print_message $GREEN "CLI JAR built successfully"
+            fi
+        else
+            print_message $RED "Error: Leiningen required to build from source"
+            exit 1
+        fi
+    else
+        print_message $RED "Error: Cannot build CLI JAR - not in flink-clj repository"
+        exit 1
+    fi
+}
+
+# Run from source (development mode)
+run_from_source() {
+    if [[ -f "project.clj" ]] && grep -q "flink-clj" project.clj 2>/dev/null; then
+        # We're in the flink-clj repository, run directly with lein
+        exec lein with-profile +flink-1.20,+dev run -m flink-clj.cli.core "$@"
+    else
+        return 1
+    fi
+}
+
+# Main execution
+main() {
+    # Handle special commands
+    case "${1:-}" in
+        install)
+            check_java
+            install_cli
+            exit 0
+            ;;
+        version|--version|-v)
+            echo "flink-clj version ${FLINK_CLJ_VERSION}"
+            exit 0
+            ;;
+    esac
+
+    check_java
+
+    # Try to run from source if in development
+    if [[ "${FLINK_CLJ_DEV:-}" == "1" ]] || [[ -f "project.clj" && -d "src/clojure/flink_clj/cli" ]]; then
+        if run_from_source "$@"; then
+            exit 0
+        fi
+    fi
+
+    # Check if CLI JAR exists
+    if [[ ! -f "$FLINK_CLJ_JAR" ]]; then
+        print_message $YELLOW "flink-clj CLI not installed."
+        echo
+        echo "Install with:"
+        echo "  flink-clj install"
+        echo
+        echo "Or set FLINK_CLJ_DEV=1 to run from source."
+        exit 1
+    fi
+
+    # Run CLI JAR
+    exec java -jar "$FLINK_CLJ_JAR" "$@"
+}
+
+main "$@"

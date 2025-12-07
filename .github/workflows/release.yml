@@ -1,0 +1,151 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    name: Build and Release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+
+      - name: Install Leiningen
+        uses: DeLaGuardo/setup-clojure@12.5
+        with:
+          lein: 2.11.2
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.lein
+          key: ${{ runner.os }}-lein-${{ hashFiles('project.clj') }}
+          restore-keys: |
+            ${{ runner.os }}-lein-
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Run tests
+        run: |
+          lein test-1.20
+          lein test-2.x
+
+      - name: Build release artifacts
+        run: |
+          mkdir -p release
+
+          # Flink 1.20 library JAR
+          lein with-profile +flink-1.20 jar
+          cp target/flink-clj-*.jar release/flink-clj-1.20-${{ steps.version.outputs.version }}.jar
+
+          lein clean
+
+          # Flink 2.x library JAR
+          lein with-profile +flink-2.x jar
+          cp target/flink-clj-*.jar release/flink-clj-2.x-${{ steps.version.outputs.version }}.jar
+
+          lein clean
+
+          # CLI uberjar
+          lein with-profile +flink-1.20,+uberjar uberjar
+          cp target/flink-clj-*-standalone.jar release/flink-clj-cli.jar
+
+          # Scripts
+          cp bin/flink-clj release/
+          cp install.sh release/
+
+          ls -la release/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: flink-clj ${{ steps.version.outputs.version }}
+          body: |
+            ## flink-clj ${{ steps.version.outputs.version }}
+
+            ### Installation
+
+            ```bash
+            curl -sL https://raw.githubusercontent.com/Ugbot/flink-clj/main/install.sh | bash
+            ```
+
+            ### Artifacts
+
+            | File | Description |
+            |------|-------------|
+            | `flink-clj-cli.jar` | CLI tool (uberjar) |
+            | `flink-clj-1.20-${{ steps.version.outputs.version }}.jar` | Library for Flink 1.20 |
+            | `flink-clj-2.x-${{ steps.version.outputs.version }}.jar` | Library for Flink 2.x |
+
+            ### Maven/Leiningen
+
+            ```clojure
+            ;; Flink 1.20
+            [io.github.ugbot/flink-clj "0.1.0" :classifier "flink-1.20"]
+
+            ;; Flink 2.x
+            [io.github.ugbot/flink-clj "0.1.0" :classifier "flink-2.x"]
+            ```
+          files: |
+            release/*
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+
+  deploy-clojars:
+    runs-on: ubuntu-latest
+    needs: release
+    name: Deploy to Clojars
+    if: ${{ !contains(github.ref, '-') }}  # Skip for pre-releases
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+
+      - name: Install Leiningen
+        uses: DeLaGuardo/setup-clojure@12.5
+        with:
+          lein: 2.11.2
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.lein
+          key: ${{ runner.os }}-lein-${{ hashFiles('project.clj') }}
+
+      - name: Deploy Flink 1.20 to Clojars
+        env:
+          CLOJARS_USERNAME: ${{ secrets.CLOJARS_USERNAME }}
+          CLOJARS_PASSWORD: ${{ secrets.CLOJARS_PASSWORD }}
+        run: lein with-profile +flink-1.20 deploy clojars
+
+      - name: Deploy Flink 2.x to Clojars
+        env:
+          CLOJARS_USERNAME: ${{ secrets.CLOJARS_USERNAME }}
+          CLOJARS_PASSWORD: ${{ secrets.CLOJARS_PASSWORD }}
+        run: lein with-profile +flink-2.x deploy clojars
